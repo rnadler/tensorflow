@@ -6,16 +6,16 @@ class_type = ClassEnum.COMPLIANCE_AND_RISK
 
 fg_data_files = ["fg-data-earlest-13Apr17.csv","fg-data-latest-13Apr17.csv"]
 logs_path = './tensorflow_logs/fg-' + class_type.name
-learning_rate = 0.05
+learning_rate = class_type.rate
 fg_data_size = 600000  # total rows
 data_batch_size = 1000
 display_step = 10
 training_epochs = int(fg_data_size / data_batch_size)
 
 # Network Parameters
-n_hidden_1 = 100  # 1st layer number of features
-n_hidden_2 = 100  # 2nd layer number of features
-n_input = 4  # This must match the number of columns in the features stack (see read_from_csv() ~line 47)
+n_hidden_1 = class_type.hidden  # 1st layer number of features
+n_hidden_2 = class_type.hidden  # 2nd layer number of features
+n_input = 3  # This must match the number of columns in the features stack (see read_from_csv() ~line 81)
 n_classes = class_type.result_classes  # compliant, not_compliant, at_risk, not_at_risk
 
 # tf Graph Input
@@ -75,10 +75,9 @@ def read_from_csv(filename_queue):
     # :source, :dob (age), :gender, :duration_minutes, :apnea_hypopnea_index, :apnea_index, :closed_apnea_index, :hypopnea_index,
     # :open_apnea_index, :mask_leak95th_percentile, :respiratory_rate_median, :therapy_mode, :is_compliant, :at_risk
     record_defaults = [[0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0], [0.0]]
-    col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, is_compliant, at_risk = tf.decode_csv(csv_row,
+    col1, col2, col3, duration, ahi, col6, col7, col8, col9, mask_leak, col11, col12, is_compliant, at_risk = tf.decode_csv(csv_row,
                                                                         record_defaults=record_defaults)
-    # duration, ahi, mask_leak, therapy_mode
-    features = tf.stack([col4, col5, col10, col12]) # must match n_input
+    features = tf.stack([duration, ahi, mask_leak]) # must match n_input
     if class_type is ClassEnum.RISK:
         print('Using RISK')
         label = both_conditions(at_risk)
