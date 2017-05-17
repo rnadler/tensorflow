@@ -4,7 +4,7 @@ from class_enum import ClassEnum
 
 class_type = ClassEnum.COMPLIANCE_AND_RISK
 
-fg_data_files = ["fg-data-earlest-13Apr17.csv","fg-data-latest-13Apr17.csv"]
+fg_data_files = ["fg-data-latest-13Apr17.csv", "fg-data-earlest-13Apr17.csv"]
 fg_data_size = 600000  # total rows
 
 logs_path = './tensorflow_logs/fg-' + class_type.name
@@ -13,8 +13,8 @@ data_batch_size = 1000
 display_step = 20
 
 # Network Parameters
-n_hidden_1 = class_type.hidden  # 1st layer number of features
-n_hidden_2 = class_type.hidden  # 2nd layer number of features
+# n_hidden_1 = class_type.hidden  # 1st layer number of features
+# n_hidden_2 = class_type.hidden  # 2nd layer number of features
 n_input = 3  # This must match the number of columns in the features stack (see read_from_csv() ~line 81)
 n_classes = class_type.result_classes  # compliant, not_compliant, at_risk, not_at_risk
 
@@ -115,25 +115,21 @@ def multilayer_perceptron(input, weights, biases, name):
         return out_layer
 
 
-def get_input_data(n_files):
-    if n_files == 1:
-        files = [fg_data_files[1]]
-        data_size = fg_data_size/2
-    else:
-        files = fg_data_files
+def get_input_data(data_size):
+    if data_size > fg_data_size:
         data_size = fg_data_size
-
     training_epochs = int(data_size / data_batch_size)
-    return files, training_epochs
+    return fg_data_files, training_epochs
 
 
-def run_model(log_name, learning_rate, data_files):
+def run_model(log_name, learning_rate, n_hidden, data_size, use_gd):
     tf.reset_default_graph()
 
     # tf Graph Input
     x = tf.placeholder(tf.float32, [None, n_input], name='InputData')
     y = tf.placeholder(tf.float32, [None, n_classes], name='LabelData')
 
+    n_hidden_1 = n_hidden_2 = n_hidden
     # Store layers weight & bias
     weights = {
         'w1': tf.Variable(tf.random_normal([n_input, n_hidden_1]), name='W1'),
@@ -154,14 +150,17 @@ def run_model(log_name, learning_rate, data_files):
         # Create a summary to monitor cost tensor
         tf.summary.scalar("loss", loss)
 
-    with tf.name_scope('SGD'):
-        # Gradient Descent
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-        # Op to calculate every variable gradient
-        grads = tf.gradients(loss, tf.trainable_variables())
-        grads = list(zip(grads, tf.trainable_variables()))
-        # Op to update all variables according to their gradient
-        apply_grads = optimizer.apply_gradients(grads_and_vars=grads)
+    with tf.name_scope('Train'):
+        if use_gd:
+            # Gradient Descent
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+            # # Op to calculate every variable gradient
+            grads = tf.gradients(loss, tf.trainable_variables())
+            grads = list(zip(grads, tf.trainable_variables()))
+            # Op to update all variables according to their gradient
+            training_step = optimizer.apply_gradients(grads_and_vars=grads)
+        else:
+            training_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     with tf.name_scope('Accuracy'):
         # Accuracy
@@ -173,13 +172,15 @@ def run_model(log_name, learning_rate, data_files):
     # Create summaries to visualize weights
     for var in tf.trainable_variables():
         tf.summary.histogram(var.name, var)
-    # Summarize all gradients
-    for grad, var in grads:
-        tf.summary.histogram(var.name + '/gradient', grad)
+
+    if use_gd:
+        # Summarize all gradients
+        for grad, var in grads:
+            tf.summary.histogram(var.name + '/gradient', grad)
     # Merge all summaries into a single op
     merged_summary_op = tf.summary.merge_all()
 
-    files, training_epochs = get_input_data(data_files)
+    files, training_epochs = get_input_data(data_size)
     # file_length = file_len(fg_data_file)
     examples, labels = input_pipeline(data_batch_size, files)
 
@@ -208,7 +209,7 @@ def run_model(log_name, learning_rate, data_files):
             # Run optimization op (backprop), cost op (to get loss value)
             # and summary nodes
             try:
-                _, c, summary = sess.run([apply_grads, loss, merged_summary_op],
+                _, c, summary = sess.run([training_step, loss, merged_summary_op],
                                          feed_dict={x: batch_xs, y: batch_ys})
             except tf.errors.InvalidArgumentError:
                 print("Failed on Epoch:", '%04d' % (epoch + 1), "(sample count=", '%d' % ((epoch + 1) * data_batch_size),
@@ -228,16 +229,18 @@ def run_model(log_name, learning_rate, data_files):
         coord.join(threads)
 
 
-def make_hparam_string(learning_rate):
-    return logs_path + "-lr_%.5f" % learning_rate
+def make_hparam_string(learning_rate, hidden, use_gd):
+    return logs_path + "-lr_%.5f-h_%d-gd_%s" % (learning_rate, hidden, use_gd)
 
 
 def main():
-    for learning_rate in [0.0001, 0.0005, 0.001]:
-        hparam = make_hparam_string(learning_rate)
-        print('Starting run for %s' % hparam)
-        # Run with the new settings
-        run_model(hparam, learning_rate, 1)
+    for learning_rate in [0.001, 0.005, 0.01]:
+        for hidden in [75, 100, 125]:
+            for use_gd in [True, False]:
+                hparam = make_hparam_string(learning_rate, hidden, use_gd)
+                print('Starting run for %s' % hparam)
+                # Run with the new settings
+                run_model(hparam, learning_rate, hidden, 200000, use_gd)
 
 
 if __name__ == '__main__':
