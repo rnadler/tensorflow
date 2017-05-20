@@ -97,19 +97,26 @@ def input_pipeline(batch_size, files, num_epochs=None):
     return example_batch, label_batch
 
 
+def get_activation(layer, user_relu, layer_num):
+    if user_relu:
+        layer = tf.nn.relu(layer)
+        name = "relu"
+    else:
+        layer = tf.nn.sigmoid(layer)
+        name = "sigmoid"
+    # Create a summary to visualize the layer activation
+    tf.summary.histogram(name + layer_num, layer)
+    return layer
+
 # Create model
-def multilayer_perceptron(input, weights, biases, name):
+def multilayer_perceptron(input, weights, biases, use_relu, name):
     with tf.name_scope(name):
         # Hidden layer with RELU activation
         layer_1 = tf.add(tf.matmul(input, weights['w1']), biases['b1'])
-        layer_1 = tf.nn.relu(layer_1)  # tf.nn.sigmoid(layer_1)
-        # Create a summary to visualize the first layer ReLU activation
-        tf.summary.histogram("relu1", layer_1)
+        layer_1 = get_activation(layer_1, use_relu, "1")
         # Hidden layer with RELU activation
         layer_2 = tf.add(tf.matmul(layer_1, weights['w2']), biases['b2'])
-        layer_2 = tf.nn.relu(layer_2)  # tf.nn.sigmoid(layer_2)
-        # Create another summary to visualize the second layer ReLU activation
-        tf.summary.histogram("relu2", layer_2)
+        layer_2 = get_activation(layer_2, use_relu, "2")
         # Output layer
         out_layer = tf.add(tf.matmul(layer_2, weights['w3']), biases['b3'])
         return out_layer
@@ -122,7 +129,7 @@ def get_input_data(data_size):
     return fg_data_files, training_epochs
 
 
-def run_model(log_name, learning_rate, n_hidden, data_size, use_gd):
+def run_model(log_name, learning_rate, n_hidden, data_size, use_gd, use_relu):
     tf.reset_default_graph()
 
     # tf Graph Input
@@ -142,7 +149,7 @@ def run_model(log_name, learning_rate, n_hidden, data_size, use_gd):
         'b3': tf.Variable(tf.random_normal([n_classes]), name='b3')
     }
 
-    pred = multilayer_perceptron(x, weights, biases, 'Model')
+    pred = multilayer_perceptron(x, weights, biases, use_relu, 'Model')
 
     with tf.name_scope('Loss'):
         # Softmax Cross entropy (cost function)
@@ -229,18 +236,19 @@ def run_model(log_name, learning_rate, n_hidden, data_size, use_gd):
         coord.join(threads)
 
 
-def make_hparam_string(learning_rate, hidden, use_gd):
-    return logs_path + "-lr_%.5f-h_%d-gd_%s" % (learning_rate, hidden, use_gd)
+def make_hparam_string(learning_rate, hidden, use_gd, use_relu):
+    return logs_path + "-lr_%.5f-h_%d-gd_%s_relu_%s" % (learning_rate, hidden, use_gd, use_relu)
 
 
 def main():
     for learning_rate in [0.001, 0.005, 0.01]:
         for hidden in [75, 100, 125]:
-            for use_gd in [True, False]:
-                hparam = make_hparam_string(learning_rate, hidden, use_gd)
-                print('Starting run for %s' % hparam)
-                # Run with the new settings
-                run_model(hparam, learning_rate, hidden, 200000, use_gd)
+            for use_gd in [True]:  # False = AdamOptimizer
+                for use_relu in [True, False]: # False = Sigmoid
+                    hparam = make_hparam_string(learning_rate, hidden, use_gd, use_relu)
+                    print('Starting run for %s' % hparam)
+                    # Run with the new settings
+                    run_model(hparam, learning_rate, hidden, 200000, use_gd, use_relu)
 
 
 if __name__ == '__main__':
